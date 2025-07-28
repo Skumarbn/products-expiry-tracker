@@ -1,7 +1,7 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faPlus, faBoxOpen, faUserCircle, faBell } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faPlus, faBoxOpen, faUserCircle, faBell, faDashboard, faChartBar, faCog, faSearch, faFilter, faCalendarAlt, faExclamationTriangle, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
 
 function App() {
@@ -15,6 +15,9 @@ function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState([]);
   const [notificationPermission, setNotificationPermission] = useState('default');
+  const [activeView, setActiveView] = useState('dashboard');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   // Check notification permission on component mount
   useEffect(() => {
@@ -164,6 +167,36 @@ function App() {
 
   const isFormValid = productName.trim() && expiryDate;
 
+  // Statistics calculations
+  const getProductStats = () => {
+    const stats = {
+      total: products.length,
+      expired: 0,
+      expiringSoon: 0,
+      good: 0
+    };
+    
+    products.forEach(product => {
+      const status = getExpiryStatus(product.expiryDate);
+      if (status.status === 'expired') stats.expired++;
+      else if (status.status === 'warning') stats.expiringSoon++;
+      else stats.good++;
+    });
+    
+    return stats;
+  };
+
+  // Filter products based on search and status
+  const getFilteredProducts = () => {
+    return products.filter(product => {
+      const matchesSearch = product.productName.toLowerCase().includes(searchTerm.toLowerCase());
+      if (filterStatus === 'all') return matchesSearch;
+      
+      const status = getExpiryStatus(product.expiryDate);
+      return matchesSearch && status.status === filterStatus;
+    });
+  };
+
   // Inline editing logic
   const handleEdit = (id, field, value) => {
     setEditing({ id, field });
@@ -216,93 +249,221 @@ function App() {
     }
   };
 
+  const stats = getProductStats();
+  const filteredProducts = getFilteredProducts();
+
   return (
-    <>
-      <div className="appbar">
-        <div className="appbar-title">
-          <FontAwesomeIcon icon={faBoxOpen} size="lg" />
-          FreshTrack Pro
+    <div className="app-container">
+      {/* Sidebar Navigation */}
+      <div className="sidebar">
+        <div className="sidebar-header">
+          <div className="logo">
+            <FontAwesomeIcon icon={faBoxOpen} />
+            <span>FreshTrack Pro</span>
+          </div>
         </div>
-        <div className="appbar-profile">
-          <FontAwesomeIcon icon={faUserCircle} size="lg" />
+        
+        <nav className="sidebar-nav">
+          <div 
+            className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveView('dashboard')}
+          >
+            <FontAwesomeIcon icon={faDashboard} />
+            <span>Dashboard</span>
+          </div>
+          <div 
+            className={`nav-item ${activeView === 'products' ? 'active' : ''}`}
+            onClick={() => setActiveView('products')}
+          >
+            <FontAwesomeIcon icon={faBoxOpen} />
+            <span>Products</span>
+          </div>
+          <div 
+            className={`nav-item ${activeView === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveView('analytics')}
+          >
+            <FontAwesomeIcon icon={faChartBar} />
+            <span>Analytics</span>
+          </div>
+          <div 
+            className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveView('settings')}
+          >
+            <FontAwesomeIcon icon={faCog} />
+            <span>Settings</span>
+          </div>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="user-profile">
+            <FontAwesomeIcon icon={faUserCircle} />
+            <div className="user-info">
+              <span className="user-name">Admin User</span>
+              <span className="user-role">Manager</span>
+            </div>
+          </div>
         </div>
       </div>
-      <div className="App">
-        <div className="card">
-          <div className="card-title"><FontAwesomeIcon icon={faPlus} /> Track Something New</div>
-          <form className="add-product add-product-row" onSubmit={e => { e.preventDefault(); addProduct(); }}>
-            <div className="form-group add-product-group">
-              <label htmlFor="productName">Product Name</label>
-              <input
-                type="text"
-                id="productName"
-                placeholder="Enter product name"
-                value={productName}
-                onChange={handleProductNameChange}
-                onBlur={handleInputBlur}
-                onKeyPress={(e) => e.key === 'Enter' && isFormValid && addProduct()}
+
+      {/* Main Content */}
+      <div className="main-content">
+        <div className="topbar">
+          <div className="page-title">
+            <h1>{activeView.charAt(0).toUpperCase() + activeView.slice(1)}</h1>
+            <p>Manage your product inventory efficiently</p>
+          </div>
+          <div className="topbar-actions">
+            <div className="search-bar">
+              <FontAwesomeIcon icon={faSearch} />
+              <input 
+                type="text" 
+                placeholder="Search products..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
-              {showSuggestions && (
-                <div className="suggestions-dropdown">
-                  {filteredSuggestions.map((suggestion, index) => (
-                    <div
-                      key={index}
-                      className="suggestion-item"
-                      onClick={() => handleSuggestionClick(suggestion)}
-                    >
-                      {suggestion}
-                    </div>
-                  ))}
-                </div>
+            </div>
+            <div className="notification-badge">
+              <FontAwesomeIcon icon={faBell} />
+              {(stats.expired + stats.expiringSoon) > 0 && (
+                <span className="badge">{stats.expired + stats.expiringSoon}</span>
               )}
             </div>
-            <div className="form-group add-product-group">
-              <label htmlFor="expiryDate">Expiry Date</label>
-              <input
-                type="date"
-                id="expiryDate"
-                value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && isFormValid && addProduct()}
-              />
-            </div>
-            <button 
-              className="add-button" 
-              type="submit"
-              disabled={!isFormValid}
-            >
-              <FontAwesomeIcon icon={faPlus} style={{ marginRight: '8px' }} />
-              Track
-            </button>
-          </form>
+          </div>
         </div>
 
-        <div className="card">
-          <div className="card-title"><FontAwesomeIcon icon={faBoxOpen} /> Products List</div>
-          <div className="content-panel">
-            {products.length === 0 ? (
-              <div className="empty-state">
-                <h3>No products added yet</h3>
-                <p>Start by adding your first product using the form above.</p>
+        <div className="dashboard-content">
+          {/* Statistics Cards */}
+          <div className="stats-grid">
+            <div className="stat-card total">
+              <div className="stat-icon">
+                <FontAwesomeIcon icon={faBoxOpen} />
+              </div>
+              <div className="stat-content">
+                <h3>{stats.total}</h3>
+                <p>Total Products</p>
+              </div>
+            </div>
+            
+            <div className="stat-card good">
+              <div className="stat-icon">
+                <FontAwesomeIcon icon={faCheckCircle} />
+              </div>
+              <div className="stat-content">
+                <h3>{stats.good}</h3>
+                <p>Fresh Products</p>
+              </div>
+            </div>
+            
+            <div className="stat-card warning">
+              <div className="stat-icon">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+              </div>
+              <div className="stat-content">
+                <h3>{stats.expiringSoon}</h3>
+                <p>Expiring Soon</p>
+              </div>
+            </div>
+            
+            <div className="stat-card expired">
+              <div className="stat-icon">
+                <FontAwesomeIcon icon={faTimesCircle} />
+              </div>
+              <div className="stat-content">
+                <h3>{stats.expired}</h3>
+                <p>Expired Items</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Add Form */}
+          <div className="quick-add-section">
+            <div className="section-header">
+              <h2><FontAwesomeIcon icon={faPlus} /> Quick Add Product</h2>
+            </div>
+            <form className="quick-add-form" onSubmit={e => { e.preventDefault(); addProduct(); }}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="productName">Product Name</label>
+                  <input
+                    type="text"
+                    id="productName"
+                    placeholder="Enter product name"
+                    value={productName}
+                    onChange={handleProductNameChange}
+                    onBlur={handleInputBlur}
+                    onKeyPress={(e) => e.key === 'Enter' && isFormValid && addProduct()}
+                  />
+                  {showSuggestions && (
+                    <div className="suggestions-dropdown">
+                      {filteredSuggestions.map((suggestion, index) => (
+                        <div
+                          key={index}
+                          className="suggestion-item"
+                          onClick={() => handleSuggestionClick(suggestion)}
+                        >
+                          {suggestion}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label htmlFor="expiryDate">Expiry Date</label>
+                  <input
+                    type="date"
+                    id="expiryDate"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && isFormValid && addProduct()}
+                  />
+                </div>
+                <button 
+                  className="add-button-modern" 
+                  type="submit"
+                  disabled={!isFormValid}
+                >
+                  <FontAwesomeIcon icon={faPlus} />
+                  Add Product
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Products Section */}
+          <div className="products-section">
+            <div className="section-header">
+              <h2><FontAwesomeIcon icon={faBoxOpen} /> Your Products</h2>
+              <div className="section-filters">
+                <select 
+                  value={filterStatus} 
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">All Status</option>
+                  <option value="good">Fresh</option>
+                  <option value="warning">Expiring Soon</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </div>
+            </div>
+
+            {filteredProducts.length === 0 ? (
+              <div className="empty-state-modern">
+                <div className="empty-icon">
+                  <FontAwesomeIcon icon={faBoxOpen} />
+                </div>
+                <h3>No products found</h3>
+                <p>{searchTerm || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Start by adding your first product using the form above'}</p>
               </div>
             ) : (
-              <table className="products-table">
-                <thead>
-                  <tr>
-                    <th>Product Name</th>
-                    <th>Expiry Date</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((product) => {
-                    const expiryStatus = getExpiryStatus(product.expiryDate);
-                    return (
-                      <tr key={product.id}>
-                        <td
+              <div className="products-grid">
+                {filteredProducts.map((product) => {
+                  const expiryStatus = getExpiryStatus(product.expiryDate);
+                  return (
+                    <div key={product.id} className={`product-card ${expiryStatus.status}`}>
+                      <div className="product-header">
+                        <div className="product-name"
                           onDoubleClick={() => handleEdit(product.id, 'productName', product.productName)}
-                          style={{ cursor: 'pointer' }}
                         >
                           {editing.id === product.id && editing.field === 'productName' ? (
                             <input
@@ -312,83 +473,102 @@ function App() {
                               onChange={handleEditChange}
                               onBlur={handleEditBlur}
                               onKeyDown={handleEditKeyDown}
-                              style={{ minWidth: 80 }}
+                              className="edit-input"
                             />
                           ) : (
-                            product.productName
+                            <h3>{product.productName}</h3>
                           )}
-                        </td>
-                        <td
-                          onDoubleClick={() => handleEdit(product.id, 'expiryDate', product.expiryDate)}
-                          style={{ cursor: 'pointer' }}
+                        </div>
+                        <button 
+                          className="delete-button-card"
+                          onClick={() => removeProduct(product.id)}
+                          title="Remove product"
                         >
-                          {editing.id === product.id && editing.field === 'expiryDate' ? (
-                            <input
-                              type="date"
-                              value={editValue}
-                              autoFocus
-                              onChange={handleEditChange}
-                              onBlur={handleEditBlur}
-                              onKeyDown={handleEditKeyDown}
-                              style={{ minWidth: 120 }}
-                            />
-                          ) : (
-                            formatDate(product.expiryDate)
-                          )}
-                        </td>
-                        <td>
-                          <span className={`expiry-status ${expiryStatus.status}`}>
-                            {expiryStatus.text}
-                          </span>
-                        </td>
-                        <td>
-                          <button 
-                            className="delete-button"
-                            onClick={() => removeProduct(product.id)}
-                            title="Remove product"
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      </div>
+                      
+                      <div className="product-info">
+                        <div className="expiry-info">
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                          <span
+                            onDoubleClick={() => handleEdit(product.id, 'expiryDate', product.expiryDate)}
                           >
-                            <FontAwesomeIcon icon={faTimes} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            {editing.id === product.id && editing.field === 'expiryDate' ? (
+                              <input
+                                type="date"
+                                value={editValue}
+                                autoFocus
+                                onChange={handleEditChange}
+                                onBlur={handleEditBlur}
+                                onKeyDown={handleEditKeyDown}
+                                className="edit-input"
+                              />
+                            ) : (
+                              formatDate(product.expiryDate)
+                            )}
+                          </span>
+                        </div>
+                        
+                        <div className={`status-badge ${expiryStatus.status}`}>
+                          <FontAwesomeIcon icon={
+                            expiryStatus.status === 'expired' ? faTimesCircle :
+                            expiryStatus.status === 'warning' ? faExclamationTriangle : faCheckCircle
+                          } />
+                          {expiryStatus.text}
+                        </div>
+                      </div>
+                      
+                      <div className="days-info">
+                        {expiryStatus.status === 'expired' ? 
+                          `Expired ${expiryStatus.days} days ago` :
+                          expiryStatus.status === 'warning' ?
+                          `${expiryStatus.days} days remaining` :
+                          `Fresh for ${expiryStatus.days} more days`
+                        }
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
-        </div>
 
-        <div className="card">
-          <div className="card-title"><FontAwesomeIcon icon={faBell} /> Browser Notifications</div>
-          <form className="email-form" onSubmit={handleNotificationPermission}>
-            <div className="notification-status">
-              <span className={`status-indicator ${notificationPermission}`}>
-                {notificationPermission === 'granted' ? '✓ Enabled' : 
-                 notificationPermission === 'denied' ? '✗ Blocked' : 'Notifications not enabled. Click below to enable.'}
-              </span>
+          {/* Settings Section */}
+          {activeView === 'settings' && (
+            <div className="settings-section">
+              <div className="settings-card">
+                <div className="section-header">
+                  <h2><FontAwesomeIcon icon={faBell} /> Notification Settings</h2>
+                </div>
+                <form className="settings-form" onSubmit={handleNotificationPermission}>
+                  <div className="notification-status">
+                    <span className={`status-indicator ${notificationPermission}`}>
+                      {notificationPermission === 'granted' ? '✓ Enabled' : 
+                       notificationPermission === 'denied' ? '✗ Blocked' : 'Notifications not enabled'}
+                    </span>
+                  </div>
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={notify}
+                      onChange={e => setNotify(e.target.checked)}
+                    />
+                    <span className="toggle-slider"></span>
+                    Get notified before products expire
+                  </label>
+                  <button className="settings-btn" type="submit">
+                    {notificationPermission === 'default' ? 'Enable Notifications' : 
+                     notificationPermission === 'denied' ? 'Enable in Settings' : 'Notifications Active'}
+                  </button>
+                  {emailMsg && <div className="settings-msg">{emailMsg}</div>}
+                </form>
+              </div>
             </div>
-            <label className="notify-label">
-              <input
-                type="checkbox"
-                checked={notify}
-                onChange={e => setNotify(e.target.checked)}
-              /> Get notified before products expire
-            </label>
-            <button className="email-save-btn" type="submit">
-              {notificationPermission === 'default' ? 'Enable Notifications' : 
-               notificationPermission === 'denied' ? 'Enable in Settings' : 'Notifications Active'}
-            </button>
-            {emailMsg && <div className="email-msg">{emailMsg}</div>}
-          </form>
-        </div>
-
-        <div className="footer">
-          &copy; {new Date().getFullYear()} FreshTrack Pro &mdash; Product Expiry SaaS | Powered by React | 
-          <button type="button" className="footer-link" style={{color:'#2563eb',textDecoration:'none',background:'none',border:'none',padding:0,cursor:'pointer'}} onClick={() => window.open('mailto:support@freshtrackpro.com')}>Contact Support</button>
+          )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
