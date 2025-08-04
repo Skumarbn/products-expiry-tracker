@@ -1,10 +1,49 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faPlus, faBoxOpen, faUserCircle, faBell, faDashboard, faChartBar, faCog, faSearch, faCalendarAlt, faExclamationTriangle, faCheckCircle, faTimesCircle, faTrash, faDownload, faUpload, faSquare, faCheckSquare } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faPlus, faBoxOpen, faUserCircle, faBell, faDashboard, faChartBar, faCog, faSearch, faCalendarAlt, faExclamationTriangle, faCheckCircle, faTimesCircle, faTrash, faDownload, faUpload, faSquare, faCheckSquare, faSync, faShoppingCart, faExternalLinkAlt, faShoppingBasket, faListUl, faCheck, faLightbulb, faClipboardList } from '@fortawesome/free-solid-svg-icons';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import './App.css';
+
+// Local Storage constants and helpers
+const STORAGE_KEY = 'products-expiry-tracker';
+const STORAGE_VERSION = '1.0';
+
+const saveToLocalStorage = (data) => {
+  try {
+    const storageData = {
+      version: STORAGE_VERSION,
+      timestamp: new Date().toISOString(),
+      data: data
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
+    return true;
+  } catch (error) {
+    console.error('Failed to save to localStorage:', error);
+    return false;
+  }
+};
+
+const loadFromLocalStorage = () => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+    
+    const parsedData = JSON.parse(stored);
+    
+    // Version compatibility check
+    if (!parsedData.version || parsedData.version !== STORAGE_VERSION) {
+      console.warn('localStorage data version mismatch, using defaults');
+      return null;
+    }
+    
+    return parsedData.data;
+  } catch (error) {
+    console.error('Failed to load from localStorage:', error);
+    return null;
+  }
+};
 
 function App() {
   const [products, setProducts] = useState([]);
@@ -22,6 +61,47 @@ function App() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [selectMode, setSelectMode] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('saved'); // 'saving', 'saved', 'error'
+  const [groceryList, setGroceryList] = useState([]);
+  const [newGroceryItem, setNewGroceryItem] = useState('');
+  const [editingGroceryItem, setEditingGroceryItem] = useState(null);
+  const [editingGroceryValue, setEditingGroceryValue] = useState('');
+
+  // Load data from localStorage on component mount
+  useEffect(() => {
+    const savedData = loadFromLocalStorage();
+    if (savedData && savedData.products) {
+      setProducts(savedData.products);
+      // Load other saved preferences if they exist
+      if (savedData.notify !== undefined) setNotify(savedData.notify);
+      if (savedData.activeView) setActiveView(savedData.activeView);
+      if (savedData.groceryList) setGroceryList(savedData.groceryList);
+    }
+  }, []);
+
+  // Save data to localStorage whenever products or key preferences change
+  useEffect(() => {
+    // Don't save on initial load
+    if (products.length === 0 && notify === true && activeView === 'dashboard') {
+      return;
+    }
+    
+    setSaveStatus('saving');
+    const dataToSave = {
+      products,
+      notify,
+      activeView,
+      groceryList
+    };
+    
+    const success = saveToLocalStorage(dataToSave);
+    setSaveStatus(success ? 'saved' : 'error');
+    
+    // Reset save status after a short delay
+    if (success) {
+      setTimeout(() => setSaveStatus('saved'), 1000);
+    }
+  }, [products, notify, activeView, groceryList]);
 
   // Check notification permission on component mount
   useEffect(() => {
@@ -171,12 +251,6 @@ function App() {
 
   const isFormValid = productName.trim() && expiryDate;
 
-  // Quick date preset functions
-  const setQuickDate = (days) => {
-    const date = new Date();
-    date.setDate(date.getDate() + days);
-    setExpiryDate(date);
-  };
 
   // Statistics calculations
   const getProductStats = () => {
@@ -317,6 +391,170 @@ function App() {
     event.target.value = '';
   };
 
+  // Clear localStorage function
+  const clearLocalStorage = () => {
+    if (window.confirm('Are you sure you want to clear all saved data? This action cannot be undone.')) {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        setProducts([]);
+        setNotify(true);
+        setActiveView('dashboard');
+        setEmailMsg('All data cleared successfully');
+        setTimeout(() => setEmailMsg(''), 3000);
+      } catch (error) {
+        setEmailMsg('Error clearing data');
+        setTimeout(() => setEmailMsg(''), 3000);
+      }
+    }
+  };
+
+  // Amazon ordering functions
+  const searchOnAmazon = (productName) => {
+    const searchQuery = encodeURIComponent(productName);
+    const amazonUrl = `https://www.amazon.com/s?k=${searchQuery}&ref=freshtrack_search`;
+    window.open(amazonUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const orderFromAmazon = (productName) => {
+    const searchQuery = encodeURIComponent(`${productName} fresh grocery`);
+    const amazonUrl = `https://www.amazon.com/s?k=${searchQuery}&i=wholefoods&ref=freshtrack_order`;
+    window.open(amazonUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const bulkOrderFromAmazon = (productNames) => {
+    if (productNames.length === 0) return;
+    
+    const searchQuery = encodeURIComponent(productNames.join(' '));
+    const amazonUrl = `https://www.amazon.com/s?k=${searchQuery}&i=wholefoods&ref=freshtrack_bulk`;
+    window.open(amazonUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const getExpiredAndExpiringProducts = () => {
+    return products.filter(product => {
+      const status = getExpiryStatus(product.expiryDate);
+      return status.status === 'expired' || status.status === 'warning';
+    });
+  };
+
+  const orderAllExpiredExpiring = () => {
+    const expiredExpiring = getExpiredAndExpiringProducts();
+    if (expiredExpiring.length === 0) {
+      setEmailMsg('No expired or expiring products to order');
+      setTimeout(() => setEmailMsg(''), 3000);
+      return;
+    }
+    
+    const productNames = expiredExpiring.map(product => product.productName);
+    bulkOrderFromAmazon(productNames);
+    setEmailMsg(`Opening Amazon search for ${productNames.length} products`);
+    setTimeout(() => setEmailMsg(''), 3000);
+  };
+
+  // Grocery List functions
+  const addToGroceryList = (itemName, category = 'general') => {
+    const newItem = {
+      id: Date.now(),
+      name: itemName.trim(),
+      completed: false,
+      category: category,
+      addedDate: new Date().toISOString(),
+      fromExpiredProduct: category === 'suggested'
+    };
+    setGroceryList([...groceryList, newItem]);
+    setEmailMsg(`"${itemName}" added to grocery list`);
+    setTimeout(() => setEmailMsg(''), 2000);
+  };
+
+  const removeFromGroceryList = (id) => {
+    setGroceryList(groceryList.filter(item => item.id !== id));
+  };
+
+  const toggleGroceryItem = (id) => {
+    setGroceryList(groceryList.map(item => 
+      item.id === id ? { ...item, completed: !item.completed } : item
+    ));
+  };
+
+  const addNewGroceryItem = () => {
+    if (newGroceryItem.trim()) {
+      addToGroceryList(newGroceryItem, 'manual');
+      setNewGroceryItem('');
+    }
+  };
+
+  const clearCompletedItems = () => {
+    setGroceryList(groceryList.filter(item => !item.completed));
+    setEmailMsg('Completed items cleared from grocery list');
+    setTimeout(() => setEmailMsg(''), 2000);
+  };
+
+  const addExpiredToGroceryList = () => {
+    const availableSuggestions = getAvailableSuggestions();
+    
+    if (availableSuggestions.length === 0) {
+      setEmailMsg('All expired/expiring products are already in your grocery list');
+      setTimeout(() => setEmailMsg(''), 3000);
+      return;
+    }
+    
+    availableSuggestions.forEach(product => {
+      addToGroceryList(product.productName, 'suggested');
+    });
+    
+    setEmailMsg(`${availableSuggestions.length} expired/expiring products added to grocery list`);
+    setTimeout(() => setEmailMsg(''), 3000);
+  };
+
+  const getGroceryListStats = () => {
+    return {
+      total: groceryList.length,
+      completed: groceryList.filter(item => item.completed).length,
+      pending: groceryList.filter(item => !item.completed).length,
+      suggested: groceryList.filter(item => item.category === 'suggested').length
+    };
+  };
+
+  // Grocery item editing functions
+  const startEditingGroceryItem = (id, currentName) => {
+    setEditingGroceryItem(id);
+    setEditingGroceryValue(currentName);
+  };
+
+  const saveGroceryItemEdit = () => {
+    if (editingGroceryValue.trim()) {
+      setGroceryList(groceryList.map(item => 
+        item.id === editingGroceryItem 
+          ? { ...item, name: editingGroceryValue.trim() }
+          : item
+      ));
+    }
+    setEditingGroceryItem(null);
+    setEditingGroceryValue('');
+  };
+
+  const cancelGroceryItemEdit = () => {
+    setEditingGroceryItem(null);
+    setEditingGroceryValue('');
+  };
+
+  const handleGroceryEditKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      saveGroceryItemEdit();
+    } else if (e.key === 'Escape') {
+      cancelGroceryItemEdit();
+    }
+  };
+
+  // Get available suggestions (exclude items already in grocery list)
+  const getAvailableSuggestions = () => {
+    const expiredExpiring = getExpiredAndExpiringProducts();
+    return expiredExpiring.filter(product => 
+      !groceryList.some(item => 
+        item.name.toLowerCase().trim() === product.productName.toLowerCase().trim()
+      )
+    );
+  };
+
   // Notification permission logic
   const handleNotificationPermission = (e) => {
     e.preventDefault();
@@ -341,17 +579,27 @@ function App() {
         <div className="sidebar-header">
           <div className="logo">
             <FontAwesomeIcon icon={faBoxOpen} />
-            <span>FreshTrack Pro v2.0</span>
+            <span>FreshTrack</span>
           </div>
         </div>
         
         <nav className="sidebar-nav">
           <div 
+            className={`nav-item ${activeView === 'grocery' ? 'active' : ''}`}
+            onClick={() => setActiveView('grocery')}
+          >
+            <FontAwesomeIcon icon={faListUl} />
+            <span>Grocery List</span>
+            {getGroceryListStats().pending > 0 && (
+              <span className="nav-badge grocery">{getGroceryListStats().pending}</span>
+            )}
+          </div>
+          <div 
             className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveView('dashboard')}
           >
             <FontAwesomeIcon icon={faDashboard} />
-            <span>Dashboard</span>
+            <span>Expiry Tracker</span>
           </div>
           <div 
             className={`nav-item ${activeView === 'products' ? 'active' : ''}`}
@@ -359,6 +607,16 @@ function App() {
           >
             <FontAwesomeIcon icon={faBoxOpen} />
             <span>Products</span>
+          </div>
+          <div 
+            className={`nav-item ${activeView === 'reorder' ? 'active' : ''}`}
+            onClick={() => setActiveView('reorder')}
+          >
+            <FontAwesomeIcon icon={faShoppingCart} />
+            <span>Quick Reorder</span>
+            {getExpiredAndExpiringProducts().length > 0 && (
+              <span className="nav-badge">{getExpiredAndExpiringProducts().length}</span>
+            )}
           </div>
           <div 
             className={`nav-item ${activeView === 'analytics' ? 'active' : ''}`}
@@ -391,10 +649,16 @@ function App() {
       <div className="main-content">
         <div className="topbar">
           <div className="page-title">
-            <h1>{activeView.charAt(0).toUpperCase() + activeView.slice(1)}</h1>
+            <h1>{
+              activeView === 'dashboard' ? 'Expiry Tracker' :
+              activeView === 'grocery' ? 'Grocery List' :
+              activeView.charAt(0).toUpperCase() + activeView.slice(1)
+            }</h1>
             <p>{
-              activeView === 'dashboard' ? 'Quick overview and product management' :
+              activeView === 'dashboard' ? 'Track expiry dates and manage your products efficiently' :
               activeView === 'products' ? 'Manage all your products with detailed controls' :
+              activeView === 'reorder' ? 'Order expired and expiring products from Amazon' :
+              activeView === 'grocery' ? 'Create and manage your shopping lists with smart suggestions' :
               activeView === 'analytics' ? 'Insights and trends from your inventory data' :
               activeView === 'settings' ? 'Configure notifications and app preferences' :
               'Manage your product inventory efficiently'
@@ -409,6 +673,23 @@ function App() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+            </div>
+            <div className="save-status">
+              {saveStatus === 'saving' && (
+                <span className="save-indicator saving">
+                  <FontAwesomeIcon icon={faSync} spin /> Saving...
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="save-indicator saved">
+                  <FontAwesomeIcon icon={faCheckCircle} /> Saved
+                </span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="save-indicator error">
+                  <FontAwesomeIcon icon={faExclamationTriangle} /> Save Error
+                </span>
+              )}
             </div>
             <div className="notification-badge">
               <FontAwesomeIcon icon={faBell} />
@@ -500,87 +781,17 @@ function App() {
                     </div>
                     <div className="form-group">
                       <label htmlFor="expiryDate">Expiry Date</label>
-                      <div className="date-input-container">
-                        <div className="date-picker-wrapper">
-                          <DatePicker
-                            selected={expiryDate}
-                            onChange={(date) => setExpiryDate(date)}
-                            dateFormat="MMM dd, yyyy"
-                            placeholderText="Select expiry"
-                            className="modern-datepicker"
-                            calendarClassName="dark-calendar"
-                            minDate={new Date()}
-                            showPopperArrow={false}
-                            onKeyDown={(e) => e.key === 'Enter' && isFormValid && addProduct()}
-                          />
-                        </div>
-                        <div className="date-presets">
-                          <button
-                            type="button"
-                            className="date-preset-btn today"
-                            onClick={() => setQuickDate(0)}
-                            title="Today (for items expiring today)"
-                          >
-                            Today
-                          </button>
-                          <button
-                            type="button"
-                            className="date-preset-btn"
-                            onClick={() => setQuickDate(1)}
-                            title="Tomorrow"
-                          >
-                            Tomorrow
-                          </button>
-                          <button
-                            type="button"
-                            className="date-preset-btn"
-                            onClick={() => setQuickDate(3)}
-                            title="3 Days"
-                          >
-                            3d
-                          </button>
-                          <button
-                            type="button"
-                            className="date-preset-btn popular"
-                            onClick={() => setQuickDate(7)}
-                            title="1 Week (most common)"
-                          >
-                            1w
-                          </button>
-                          <button
-                            type="button"
-                            className="date-preset-btn"
-                            onClick={() => setQuickDate(14)}
-                            title="2 Weeks"
-                          >
-                            2w
-                          </button>
-                          <button
-                            type="button"
-                            className="date-preset-btn popular"
-                            onClick={() => setQuickDate(30)}
-                            title="1 Month (common for packaged foods)"
-                          >
-                            1m
-                          </button>
-                          <button
-                            type="button"
-                            className="date-preset-btn"
-                            onClick={() => setQuickDate(90)}
-                            title="3 Months"
-                          >
-                            3m
-                          </button>
-                          <button
-                            type="button"
-                            className="date-preset-btn"
-                            onClick={() => setQuickDate(365)}
-                            title="1 Year (for non-perishables)"
-                          >
-                            1y
-                          </button>
-                        </div>
-                      </div>
+                      <DatePicker
+                        selected={expiryDate}
+                        onChange={(date) => setExpiryDate(date)}
+                        dateFormat="MMM dd, yyyy"
+                        placeholderText="Select expiry"
+                        className="modern-datepicker"
+                        calendarClassName="dark-calendar"
+                        minDate={new Date()}
+                        showPopperArrow={false}
+                        onKeyDown={(e) => e.key === 'Enter' && isFormValid && addProduct()}
+                      />
                     </div>
                     <button 
                       className="add-button-modern" 
@@ -637,13 +848,24 @@ function App() {
                                expiryStatus.status === 'warning' ? `${expiryStatus.days}d` : 'FRESH'}
                             </div>
                           </div>
-                          <button 
-                            className="delete-button-list"
-                            onClick={() => removeProduct(product.id)}
-                            title="Remove product"
-                          >
-                            <FontAwesomeIcon icon={faTimes} />
-                          </button>
+                          <div className="product-list-actions">
+                            {(expiryStatus.status === 'expired' || expiryStatus.status === 'warning') && (
+                              <button 
+                                className="amazon-button-small"
+                                onClick={() => orderFromAmazon(product.productName)}
+                                title="Order from Amazon"
+                              >
+                                <FontAwesomeIcon icon={faShoppingCart} />
+                              </button>
+                            )}
+                            <button 
+                              className="delete-button-list"
+                              onClick={() => removeProduct(product.id)}
+                              title="Remove product"
+                            >
+                              <FontAwesomeIcon icon={faTimes} />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -919,6 +1141,29 @@ function App() {
                     </div>
                     <div className="bulk-actions-right">
                       <button 
+                        className="bulk-action-btn amazon"
+                        onClick={() => {
+                          const selectedProductsData = products.filter(p => selectedProducts.includes(p.id));
+                          const expiredExpiring = selectedProductsData.filter(product => {
+                            const status = getExpiryStatus(product.expiryDate);
+                            return status.status === 'expired' || status.status === 'warning';
+                          });
+                          if (expiredExpiring.length > 0) {
+                            const productNames = expiredExpiring.map(p => p.productName);
+                            bulkOrderFromAmazon(productNames);
+                            setEmailMsg(`Opening Amazon for ${productNames.length} expired/expiring products`);
+                            setTimeout(() => setEmailMsg(''), 3000);
+                          } else {
+                            setEmailMsg('No expired or expiring products selected');
+                            setTimeout(() => setEmailMsg(''), 3000);
+                          }
+                        }}
+                        disabled={selectedProducts.length === 0}
+                      >
+                        <FontAwesomeIcon icon={faShoppingCart} />
+                        Order Selected from Amazon
+                      </button>
+                      <button 
                         className="bulk-action-btn danger"
                         onClick={bulkDeleteProducts}
                         disabled={selectedProducts.length === 0}
@@ -1028,11 +1273,436 @@ function App() {
                               `Fresh for ${expiryStatus.days} more days`
                             }
                           </div>
+                          
+                          {(expiryStatus.status === 'expired' || expiryStatus.status === 'warning') && (
+                            <div className="product-amazon-actions">
+                              <button 
+                                className="amazon-order-btn secondary"
+                                onClick={() => searchOnAmazon(product.productName)}
+                                title="Search on Amazon"
+                              >
+                                <FontAwesomeIcon icon={faSearch} />
+                                Search Amazon
+                              </button>
+                              <button 
+                                className="amazon-order-btn primary"
+                                onClick={() => orderFromAmazon(product.productName)}
+                                title="Order from Amazon"
+                              >
+                                <FontAwesomeIcon icon={faShoppingCart} />
+                                Order Now
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Quick Reorder Page */}
+          {activeView === 'reorder' && (
+            <div className="reorder-page">
+              <div className="reorder-section">
+                <div className="section-header">
+                  <h2><FontAwesomeIcon icon={faShoppingCart} /> Items Need Reordering</h2>
+                  <div className="reorder-summary">
+                    <span className="reorder-count">{getExpiredAndExpiringProducts().length}</span>
+                    <span className="reorder-text">products ready to reorder</span>
+                  </div>
+                </div>
+
+                {getExpiredAndExpiringProducts().length === 0 ? (
+                  <div className="empty-state-modern">
+                    <div className="empty-icon">
+                      <FontAwesomeIcon icon={faShoppingCart} />
+                    </div>
+                    <h3>No items need reordering</h3>
+                    <p>All your products are fresh! When items expire or are about to expire, they'll appear here for easy reordering.</p>
+                    <button 
+                      className="empty-action-btn"
+                      onClick={() => setActiveView('products')}
+                    >
+                      <FontAwesomeIcon icon={faBoxOpen} />
+                      View All Products
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Bulk Actions */}
+                    <div className="reorder-bulk-actions">
+                      <div className="bulk-summary">
+                        <div className="bulk-stats">
+                          <div className="bulk-stat expired">
+                            <span className="stat-number">
+                              {getExpiredAndExpiringProducts().filter(p => getExpiryStatus(p.expiryDate).status === 'expired').length}
+                            </span>
+                            <span className="stat-label">Expired</span>
+                          </div>
+                          <div className="bulk-stat warning">
+                            <span className="stat-number">
+                              {getExpiredAndExpiringProducts().filter(p => getExpiryStatus(p.expiryDate).status === 'warning').length}
+                            </span>
+                            <span className="stat-label">Expiring Soon</span>
+                          </div>
+                        </div>
+                        <div className="bulk-actions">
+                          <button 
+                            className="amazon-order-btn primary large"
+                            onClick={orderAllExpiredExpiring}
+                          >
+                            <FontAwesomeIcon icon={faShoppingBasket} />
+                            Order All from Amazon
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Reorder Products Grid */}
+                    <div className="reorder-products-grid">
+                      {getExpiredAndExpiringProducts()
+                        .sort((a, b) => {
+                          const statusA = getExpiryStatus(a.expiryDate);
+                          const statusB = getExpiryStatus(b.expiryDate);
+                          // Sort expired first, then by days
+                          if (statusA.status === 'expired' && statusB.status !== 'expired') return -1;
+                          if (statusA.status !== 'expired' && statusB.status === 'expired') return 1;
+                          return statusA.days - statusB.days;
+                        })
+                        .map((product) => {
+                          const expiryStatus = getExpiryStatus(product.expiryDate);
+                          return (
+                            <div key={product.id} className={`reorder-product-card ${expiryStatus.status}`}>
+                              <div className="reorder-product-header">
+                                <div className="product-info">
+                                  <h3 className="product-name">{product.productName}</h3>
+                                  <div className="product-expiry">
+                                    <FontAwesomeIcon icon={faCalendarAlt} />
+                                    <span>Expires: {formatDate(product.expiryDate)}</span>
+                                  </div>
+                                </div>
+                                <div className={`reorder-status-badge ${expiryStatus.status}`}>
+                                  <FontAwesomeIcon icon={
+                                    expiryStatus.status === 'expired' ? faTimesCircle : faExclamationTriangle
+                                  } />
+                                  {expiryStatus.status === 'expired' ? 'EXPIRED' : `${expiryStatus.days}d LEFT`}
+                                </div>
+                              </div>
+                              
+                              <div className="reorder-urgency">
+                                {expiryStatus.status === 'expired' ? 
+                                  <span className="urgency-text expired">Expired {expiryStatus.days} days ago</span> :
+                                  <span className="urgency-text warning">Expires in {expiryStatus.days} days</span>
+                                }
+                              </div>
+
+                              <div className="reorder-actions">
+                                <button 
+                                  className="amazon-order-btn secondary"
+                                  onClick={() => searchOnAmazon(product.productName)}
+                                  title="Search on Amazon"
+                                >
+                                  <FontAwesomeIcon icon={faSearch} />
+                                  Search
+                                </button>
+                                <button 
+                                  className="amazon-order-btn primary"
+                                  onClick={() => orderFromAmazon(product.productName)}
+                                  title="Order from Amazon"
+                                >
+                                  <FontAwesomeIcon icon={faShoppingCart} />
+                                  Order Now
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </>
+                )}
+
+                {emailMsg && <div className="action-message amazon">{emailMsg}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Grocery List Page */}
+          {activeView === 'grocery' && (
+            <div className="grocery-page">
+              <div className="grocery-section">
+                {/* Grocery List Stats */}
+                <div className="grocery-stats-grid">
+                  <div className="grocery-stat-card total">
+                    <div className="stat-icon">
+                      <FontAwesomeIcon icon={faClipboardList} />
+                    </div>
+                    <div className="stat-content">
+                      <h3>{getGroceryListStats().total}</h3>
+                      <p>Total Items</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grocery-stat-card pending">
+                    <div className="stat-icon">
+                      <FontAwesomeIcon icon={faListUl} />
+                    </div>
+                    <div className="stat-content">
+                      <h3>{getGroceryListStats().pending}</h3>
+                      <p>To Buy</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grocery-stat-card completed">
+                    <div className="stat-icon">
+                      <FontAwesomeIcon icon={faCheck} />
+                    </div>
+                    <div className="stat-content">
+                      <h3>{getGroceryListStats().completed}</h3>
+                      <p>Completed</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grocery-stat-card suggested">
+                    <div className="stat-icon">
+                      <FontAwesomeIcon icon={faLightbulb} />
+                    </div>
+                    <div className="stat-content">
+                      <h3>{getGroceryListStats().suggested}</h3>
+                      <p>Suggested</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Add New Item Form */}
+                <div className="add-grocery-section">
+                  <div className="section-header">
+                    <h2><FontAwesomeIcon icon={faPlus} /> Add to Grocery List</h2>
+                  </div>
+                  <form className="add-grocery-form" onSubmit={e => { e.preventDefault(); addNewGroceryItem(); }}>
+                    <div className="grocery-input-group">
+                      <input
+                        type="text"
+                        placeholder="Enter grocery item (e.g., Milk, Bread, Bananas...)"
+                        value={newGroceryItem}
+                        onChange={(e) => setNewGroceryItem(e.target.value)}
+                        className="grocery-input"
+                        onKeyPress={(e) => e.key === 'Enter' && newGroceryItem.trim() && addNewGroceryItem()}
+                      />
+                      <button 
+                        className="add-grocery-btn" 
+                        type="submit"
+                        disabled={!newGroceryItem.trim()}
+                      >
+                        <FontAwesomeIcon icon={faPlus} />
+                        Add Item
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Smart Suggestions */}
+                {getAvailableSuggestions().length > 0 && (
+                  <div className="grocery-suggestions-section">
+                    <div className="section-header">
+                      <h2><FontAwesomeIcon icon={faLightbulb} /> Smart Suggestions</h2>
+                      <p>Items that are expired or expiring soon</p>
+                    </div>
+                    <div className="suggestions-card">
+                      <div className="suggestions-header">
+                        <div className="suggestion-stats">
+                          <span className="suggestion-count">{getAvailableSuggestions().length}</span>
+                          <span className="suggestion-label">items need replacement</span>
+                        </div>
+                        <button 
+                          className="add-all-suggestions-btn"
+                          onClick={addExpiredToGroceryList}
+                        >
+                          <FontAwesomeIcon icon={faPlus} />
+                          Add All to List
+                        </button>
+                      </div>
+                      <div className="suggestions-list">
+                        {getAvailableSuggestions().slice(0, 6).map(product => {
+                          const expiryStatus = getExpiryStatus(product.expiryDate);
+                          
+                          return (
+                            <div key={product.id} className={`suggestion-item ${expiryStatus.status}`}>
+                              <div className="suggestion-info">
+                                <span className="suggestion-name">{product.productName}</span>
+                                <span className={`suggestion-status ${expiryStatus.status}`}>
+                                  {expiryStatus.status === 'expired' ? 'Expired' : `${expiryStatus.days}d left`}
+                                </span>
+                              </div>
+                              <button 
+                                className="suggestion-add-btn"
+                                onClick={() => addToGroceryList(product.productName, 'suggested')}
+                                title="Add to grocery list"
+                              >
+                                <FontAwesomeIcon icon={faPlus} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {getAvailableSuggestions().length > 6 && (
+                          <div className="suggestion-item more">
+                            <span className="suggestion-name">+{getAvailableSuggestions().length - 6} more expired/expiring items</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Grocery List */}
+                <div className="grocery-list-section">
+                  <div className="section-header">
+                    <h2><FontAwesomeIcon icon={faListUl} /> Your Grocery List</h2>
+                    <div className="list-actions">
+                      {getGroceryListStats().completed > 0 && (
+                        <button 
+                          className="clear-completed-btn"
+                          onClick={clearCompletedItems}
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                          Clear Completed
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {groceryList.length === 0 ? (
+                    <div className="empty-state-modern">
+                      <div className="empty-icon">
+                        <FontAwesomeIcon icon={faListUl} />
+                      </div>
+                      <h3>Your grocery list is empty</h3>
+                      <p>Add items manually or use our smart suggestions from expired products</p>
+                    </div>
+                  ) : (
+                    <div className="grocery-items-container">
+                      {/* Pending Items */}
+                      {groceryList.filter(item => !item.completed).length > 0 && (
+                        <div className="grocery-group">
+                          <h3 className="group-title">
+                            <FontAwesomeIcon icon={faListUl} />
+                            To Buy ({groceryList.filter(item => !item.completed).length})
+                          </h3>
+                          <div className="grocery-items-list">
+                            {groceryList
+                              .filter(item => !item.completed)
+                              .sort((a, b) => new Date(b.addedDate) - new Date(a.addedDate))
+                              .map(item => (
+                                <div key={item.id} className={`grocery-item ${item.category}`}>
+                                  <div className="item-checkbox">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.completed}
+                                      onChange={() => toggleGroceryItem(item.id)}
+                                      className="grocery-checkbox"
+                                    />
+                                  </div>
+                                  <div className="item-content">
+                                    {editingGroceryItem === item.id ? (
+                                      <input
+                                        type="text"
+                                        value={editingGroceryValue}
+                                        onChange={(e) => setEditingGroceryValue(e.target.value)}
+                                        onBlur={saveGroceryItemEdit}
+                                        onKeyDown={handleGroceryEditKeyDown}
+                                        className="grocery-edit-input"
+                                        autoFocus
+                                      />
+                                    ) : (
+                                      <span 
+                                        className="item-name editable"
+                                        onDoubleClick={() => startEditingGroceryItem(item.id, item.name)}
+                                        title="Double-click to edit"
+                                      >
+                                        {item.name}
+                                      </span>
+                                    )}
+                                    {item.category === 'suggested' && (
+                                      <span className="item-badge suggested">
+                                        <FontAwesomeIcon icon={faLightbulb} />
+                                        Suggested
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button 
+                                    className="item-remove-btn"
+                                    onClick={() => removeFromGroceryList(item.id)}
+                                    title="Remove item"
+                                  >
+                                    <FontAwesomeIcon icon={faTimes} />
+                                  </button>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Completed Items */}
+                      {groceryList.filter(item => item.completed).length > 0 && (
+                        <div className="grocery-group completed">
+                          <h3 className="group-title">
+                            <FontAwesomeIcon icon={faCheck} />
+                            Completed ({groceryList.filter(item => item.completed).length})
+                          </h3>
+                          <div className="grocery-items-list">
+                            {groceryList
+                              .filter(item => item.completed)
+                              .sort((a, b) => new Date(b.addedDate) - new Date(a.addedDate))
+                              .map(item => (
+                                <div key={item.id} className="grocery-item completed">
+                                  <div className="item-checkbox">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.completed}
+                                      onChange={() => toggleGroceryItem(item.id)}
+                                      className="grocery-checkbox"
+                                    />
+                                  </div>
+                                  <div className="item-content">
+                                    {editingGroceryItem === item.id ? (
+                                      <input
+                                        type="text"
+                                        value={editingGroceryValue}
+                                        onChange={(e) => setEditingGroceryValue(e.target.value)}
+                                        onBlur={saveGroceryItemEdit}
+                                        onKeyDown={handleGroceryEditKeyDown}
+                                        className="grocery-edit-input"
+                                        autoFocus
+                                      />
+                                    ) : (
+                                      <span 
+                                        className="item-name editable"
+                                        onDoubleClick={() => startEditingGroceryItem(item.id, item.name)}
+                                        title="Double-click to edit"
+                                      >
+                                        {item.name}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button 
+                                    className="item-remove-btn"
+                                    onClick={() => removeFromGroceryList(item.id)}
+                                    title="Remove item"
+                                  >
+                                    <FontAwesomeIcon icon={faTimes} />
+                                  </button>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {emailMsg && <div className="action-message grocery">{emailMsg}</div>}
               </div>
             </div>
           )}
@@ -1066,6 +1736,28 @@ function App() {
                   </button>
                   {emailMsg && <div className="settings-msg">{emailMsg}</div>}
                 </form>
+              </div>
+              
+              <div className="settings-card">
+                <div className="section-header">
+                  <h2><FontAwesomeIcon icon={faTrash} /> Data Management</h2>
+                </div>
+                <div className="settings-form">
+                  <p style={{color: '#94a3b8', marginBottom: '16px'}}>
+                    Your data is automatically saved to your browser's local storage. 
+                    You can clear all data if needed.
+                  </p>
+                  <button 
+                    className="settings-btn danger"
+                    onClick={clearLocalStorage}
+                    type="button"
+                  >
+                    <FontAwesomeIcon icon={faTrash} /> Clear All Data
+                  </button>
+                  <p style={{color: '#64748b', fontSize: '0.8rem', marginTop: '8px'}}>
+                    This will remove all products and reset your preferences.
+                  </p>
+                </div>
               </div>
             </div>
           )}
