@@ -1,9 +1,12 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faPlus, faBoxOpen, faUserCircle, faBell, faDashboard, faChartBar, faCog, faSearch, faCalendarAlt, faExclamationTriangle, faCheckCircle, faTimesCircle, faTrash, faDownload, faUpload, faSquare, faCheckSquare, faSync, faShoppingCart, faExternalLinkAlt, faShoppingBasket, faListUl, faCheck, faLightbulb, faClipboardList } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faPlus, faBoxOpen, faUserCircle, faBell, faDashboard, faChartBar, faCog, faSearch, faCalendarAlt, faExclamationTriangle, faCheckCircle, faTimesCircle, faTrash, faDownload, faUpload, faSquare, faCheckSquare, faSync, faShoppingCart, faExternalLinkAlt, faShoppingBasket, faListUl, faCheck, faLightbulb, faClipboardList, faSignOutAlt } from '@fortawesome/free-solid-svg-icons';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import { AuthProvider } from './contexts/AuthContext';
+import { useAuth } from './contexts/AuthContext';
+import AuthGuard from './components/AuthGuard';
 import './App.css';
 
 // Local Storage constants and helpers
@@ -45,7 +48,8 @@ const loadFromLocalStorage = () => {
   }
 };
 
-function App() {
+function GroceryProApp() {
+  const { user, logout } = useAuth();
   const [products, setProducts] = useState([]);
   const [productName, setProductName] = useState('');
   const [expiryDate, setExpiryDate] = useState(null);
@@ -66,6 +70,7 @@ function App() {
   const [newGroceryItem, setNewGroceryItem] = useState('');
   const [editingGroceryItem, setEditingGroceryItem] = useState(null);
   const [editingGroceryValue, setEditingGroceryValue] = useState('');
+  // Removed theme functionality - app now uses only dark mode
 
   // Load data from localStorage on component mount
   useEffect(() => {
@@ -76,6 +81,7 @@ function App() {
       if (savedData.notify !== undefined) setNotify(savedData.notify);
       if (savedData.activeView) setActiveView(savedData.activeView);
       if (savedData.groceryList) setGroceryList(savedData.groceryList);
+      // Theme functionality removed
     }
   }, []);
 
@@ -569,17 +575,25 @@ function App() {
     }
   };
 
+  // Initialize dark mode on component mount
+  useEffect(() => {
+    document.body.classList.add('dark');
+    document.documentElement.classList.add('dark');
+    document.body.classList.remove('light');
+    document.documentElement.classList.remove('light');
+  }, []);
+
   const stats = getProductStats();
   const filteredProducts = getFilteredProducts();
 
   return (
-    <div className="app-container">
+    <div className="app-container dark">
       {/* Sidebar Navigation */}
       <div className="sidebar">
         <div className="sidebar-header">
           <div className="logo">
             <FontAwesomeIcon icon={faBoxOpen} />
-            <span>FreshTrack</span>
+            <span>Lettucetrack</span>
           </div>
         </div>
         
@@ -638,9 +652,16 @@ function App() {
           <div className="user-profile">
             <FontAwesomeIcon icon={faUserCircle} />
             <div className="user-info">
-              <span className="user-name">Admin User</span>
-              <span className="user-role">Manager</span>
+              <span className="user-name">{user?.email?.split('@')[0] || 'User'}</span>
+              <span className="user-role">Authenticated</span>
             </div>
+            <button 
+              className="logout-button"
+              onClick={logout}
+              title="Logout"
+            >
+              <FontAwesomeIcon icon={faSignOutAlt} />
+            </button>
           </div>
         </div>
       </div>
@@ -691,6 +712,7 @@ function App() {
                 </span>
               )}
             </div>
+            {/* Theme toggle removed - app now uses dark mode only */}
             <div className="notification-badge">
               <FontAwesomeIcon icon={faBell} />
               {(stats.expired + stats.expiringSoon) > 0 && (
@@ -1303,129 +1325,115 @@ function App() {
             </div>
           )}
 
-          {/* Quick Reorder Page */}
+          {/* Quick Reorder Page - Balanced Design */}
           {activeView === 'reorder' && (
-            <div className="reorder-page">
-              <div className="reorder-section">
-                <div className="section-header">
-                  <h2><FontAwesomeIcon icon={faShoppingCart} /> Items Need Reordering</h2>
-                  <div className="reorder-summary">
-                    <span className="reorder-count">{getExpiredAndExpiringProducts().length}</span>
-                    <span className="reorder-text">products ready to reorder</span>
+            <div className="reorder-page-balanced">
+              {getExpiredAndExpiringProducts().length === 0 ? (
+                <div className="empty-state-modern">
+                  <div className="empty-icon">
+                    <FontAwesomeIcon icon={faShoppingCart} />
                   </div>
+                  <h3>All products are fresh!</h3>
+                  <p>Items that are expired or expiring soon will appear here for easy reordering.</p>
+                  <button 
+                    className="empty-action-btn"
+                    onClick={() => setActiveView('products')}
+                  >
+                    <FontAwesomeIcon icon={faBoxOpen} />
+                    View Products
+                  </button>
                 </div>
-
-                {getExpiredAndExpiringProducts().length === 0 ? (
-                  <div className="empty-state-modern">
-                    <div className="empty-icon">
-                      <FontAwesomeIcon icon={faShoppingCart} />
-                    </div>
-                    <h3>No items need reordering</h3>
-                    <p>All your products are fresh! When items expire or are about to expire, they'll appear here for easy reordering.</p>
-                    <button 
-                      className="empty-action-btn"
-                      onClick={() => setActiveView('products')}
-                    >
-                      <FontAwesomeIcon icon={faBoxOpen} />
-                      View All Products
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {/* Bulk Actions */}
-                    <div className="reorder-bulk-actions">
-                      <div className="bulk-summary">
-                        <div className="bulk-stats">
-                          <div className="bulk-stat expired">
-                            <span className="stat-number">
-                              {getExpiredAndExpiringProducts().filter(p => getExpiryStatus(p.expiryDate).status === 'expired').length}
-                            </span>
-                            <span className="stat-label">Expired</span>
-                          </div>
-                          <div className="bulk-stat warning">
-                            <span className="stat-number">
-                              {getExpiredAndExpiringProducts().filter(p => getExpiryStatus(p.expiryDate).status === 'warning').length}
-                            </span>
-                            <span className="stat-label">Expiring Soon</span>
-                          </div>
-                        </div>
-                        <div className="bulk-actions">
-                          <button 
-                            className="amazon-order-btn primary large"
-                            onClick={orderAllExpiredExpiring}
-                          >
-                            <FontAwesomeIcon icon={faShoppingBasket} />
-                            Order All from Amazon
-                          </button>
-                        </div>
+              ) : (
+                <div className="reorder-content-balanced">
+                  {/* Header with summary stats */}
+                  <div className="reorder-header-balanced">
+                    <div className="reorder-stats">
+                      <div className="stat-item">
+                        <span className="stat-number">{getExpiredAndExpiringProducts().length}</span>
+                        <span className="stat-label">Items to Reorder</span>
+                      </div>
+                      <div className="stat-divider"></div>
+                      <div className="stat-item expired">
+                        <span className="stat-number">
+                          {getExpiredAndExpiringProducts().filter(p => getExpiryStatus(p.expiryDate).status === 'expired').length}
+                        </span>
+                        <span className="stat-label">Expired</span>
+                      </div>
+                      <div className="stat-item warning">
+                        <span className="stat-number">
+                          {getExpiredAndExpiringProducts().filter(p => getExpiryStatus(p.expiryDate).status === 'warning').length}
+                        </span>
+                        <span className="stat-label">Expiring Soon</span>
                       </div>
                     </div>
+                    <button 
+                      className="order-all-btn-balanced"
+                      onClick={orderAllExpiredExpiring}
+                    >
+                      <FontAwesomeIcon icon={faShoppingBasket} />
+                      Order All from Amazon
+                    </button>
+                  </div>
 
-                    {/* Reorder Products Grid */}
-                    <div className="reorder-products-grid">
-                      {getExpiredAndExpiringProducts()
-                        .sort((a, b) => {
-                          const statusA = getExpiryStatus(a.expiryDate);
-                          const statusB = getExpiryStatus(b.expiryDate);
-                          // Sort expired first, then by days
-                          if (statusA.status === 'expired' && statusB.status !== 'expired') return -1;
-                          if (statusA.status !== 'expired' && statusB.status === 'expired') return 1;
-                          return statusA.days - statusB.days;
-                        })
-                        .map((product) => {
-                          const expiryStatus = getExpiryStatus(product.expiryDate);
-                          return (
-                            <div key={product.id} className={`reorder-product-card ${expiryStatus.status}`}>
-                              <div className="reorder-product-header">
-                                <div className="product-info">
-                                  <h3 className="product-name">{product.productName}</h3>
-                                  <div className="product-expiry">
-                                    <FontAwesomeIcon icon={faCalendarAlt} />
-                                    <span>Expires: {formatDate(product.expiryDate)}</span>
-                                  </div>
-                                </div>
-                                <div className={`reorder-status-badge ${expiryStatus.status}`}>
-                                  <FontAwesomeIcon icon={
-                                    expiryStatus.status === 'expired' ? faTimesCircle : faExclamationTriangle
-                                  } />
-                                  {expiryStatus.status === 'expired' ? 'EXPIRED' : `${expiryStatus.days}d LEFT`}
-                                </div>
+                  {/* Product cards - balanced between simple list and complex cards */}
+                  <div className="reorder-products-balanced">
+                    {getExpiredAndExpiringProducts()
+                      .sort((a, b) => {
+                        const statusA = getExpiryStatus(a.expiryDate);
+                        const statusB = getExpiryStatus(b.expiryDate);
+                        if (statusA.status === 'expired' && statusB.status !== 'expired') return -1;
+                        if (statusA.status !== 'expired' && statusB.status === 'expired') return 1;
+                        return statusA.days - statusB.days;
+                      })
+                      .map((product) => {
+                        const expiryStatus = getExpiryStatus(product.expiryDate);
+                        return (
+                          <div key={product.id} className={`reorder-card-balanced ${expiryStatus.status}`}>
+                            <div className="card-left">
+                              <div className={`status-indicator ${expiryStatus.status}`}>
+                                <FontAwesomeIcon icon={
+                                  expiryStatus.status === 'expired' ? faTimesCircle : faExclamationTriangle
+                                } />
                               </div>
-                              
-                              <div className="reorder-urgency">
-                                {expiryStatus.status === 'expired' ? 
-                                  <span className="urgency-text expired">Expired {expiryStatus.days} days ago</span> :
-                                  <span className="urgency-text warning">Expires in {expiryStatus.days} days</span>
-                                }
-                              </div>
-
-                              <div className="reorder-actions">
-                                <button 
-                                  className="amazon-order-btn secondary"
-                                  onClick={() => searchOnAmazon(product.productName)}
-                                  title="Search on Amazon"
-                                >
-                                  <FontAwesomeIcon icon={faSearch} />
-                                  Search
-                                </button>
-                                <button 
-                                  className="amazon-order-btn primary"
-                                  onClick={() => orderFromAmazon(product.productName)}
-                                  title="Order from Amazon"
-                                >
-                                  <FontAwesomeIcon icon={faShoppingCart} />
-                                  Order Now
-                                </button>
+                              <div className="product-details">
+                                <h3 className="product-name">{product.productName}</h3>
+                                <div className="product-meta">
+                                  <FontAwesomeIcon icon={faCalendarAlt} />
+                                  <span>Expires: {formatDate(product.expiryDate)}</span>
+                                </div>
+                                <div className={`urgency-text ${expiryStatus.status}`}>
+                                  {expiryStatus.status === 'expired' 
+                                    ? `Expired ${expiryStatus.days} days ago`
+                                    : `Expires in ${expiryStatus.days} days`}
+                                </div>
                               </div>
                             </div>
-                          );
-                        })}
-                    </div>
-                  </>
-                )}
+                            <div className="card-actions">
+                              <button 
+                                className="action-btn-secondary"
+                                onClick={() => searchOnAmazon(product.productName)}
+                                title="Search on Amazon"
+                              >
+                                <FontAwesomeIcon icon={faSearch} />
+                                Search
+                              </button>
+                              <button 
+                                className="action-btn-primary"
+                                onClick={() => orderFromAmazon(product.productName)}
+                                title="Order from Amazon"
+                              >
+                                <FontAwesomeIcon icon={faShoppingCart} />
+                                Order Now
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
 
-                {emailMsg && <div className="action-message amazon">{emailMsg}</div>}
-              </div>
+              {emailMsg && <div className="action-message balanced">{emailMsg}</div>}
             </div>
           )}
 
@@ -1768,6 +1776,16 @@ function App() {
       <div id="date-picker-portal"></div>
       <div id="edit-date-picker-portal"></div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthGuard>
+        <GroceryProApp />
+      </AuthGuard>
+    </AuthProvider>
   );
 }
 
