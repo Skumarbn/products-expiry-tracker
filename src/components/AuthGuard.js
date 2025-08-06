@@ -15,7 +15,7 @@ const AuthGuard = ({ children }) => {
       <div className="auth-loading">
         <div className="loading-spinner">
           <FontAwesomeIcon icon={faSpinner} spin size="2x" />
-          <p>Loading Lettucetrack...</p>
+          <p>Loading Grocery Manager...</p>
         </div>
       </div>
     );

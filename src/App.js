@@ -593,7 +593,7 @@ function GroceryProApp() {
         <div className="sidebar-header">
           <div className="logo">
             <FontAwesomeIcon icon={faBoxOpen} />
-            <span>Lettucetrack</span>
+            <span>Grocery Manager</span>
           </div>
         </div>
         

@@ -36,7 +36,7 @@ const EmailSignup = ({ onSuccess }) => {
           <div className="auth-logo">
             <FontAwesomeIcon icon={faEnvelope} />
           </div>
-          <h1>Welcome to Lettucetrack</h1>
+          <h1>Welcome to Grocery Manager</h1>
           <p>Enter your email to get started. We'll send you a secure login code.</p>
         </div>
 

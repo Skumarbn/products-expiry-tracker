@@ -1,7 +1,7 @@
 {
-  "short_name": "LettuceTrack",
-  "name": "LettuceTrack - Smart Expiry Tracker",
-  "description": "Track product expiry dates and reorder from Amazon with smart grocery lists",
+  "short_name": "Grocery Manager",
+  "name": "Grocery Manager - Smart Expiry Tracker",
+  "description": "Manage groceries, track expiry dates, and reorder from Amazon with smart grocery lists",
   "icons": [
     {
       "src": "favicon.ico",
