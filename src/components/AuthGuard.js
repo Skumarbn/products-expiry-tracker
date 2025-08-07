@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import EmailSignup from './EmailSignup';
-import CodeVerification from './CodeVerification';
+import Auth from './Auth';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner } from '@fortawesome/free-solid-svg-icons';
 
 const AuthGuard = ({ children }) => {
-  const { user, isLoading, pendingEmail } = useAuth();
-  const [authStep, setAuthStep] = useState('email'); // 'email' or 'verification'
+  const { user, isLoading } = useAuth();
 
   // Show loading spinner while checking authentication
   if (isLoading) {
@@ -26,20 +24,8 @@ const AuthGuard = ({ children }) => {
     return children;
   }
 
-  // Show authentication flow
-  if (pendingEmail && authStep === 'verification') {
-    return (
-      <CodeVerification 
-        onBack={() => setAuthStep('email')}
-      />
-    );
-  }
-
-  return (
-    <EmailSignup 
-      onSuccess={() => setAuthStep('verification')}
-    />
-  );
+  // Show authentication flow (login/register)
+  return <Auth />;
 };
 
 export default AuthGuard;

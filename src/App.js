@@ -10,17 +10,22 @@ import AuthGuard from './components/AuthGuard';
 import './App.css';
 
 // Local Storage constants and helpers
-const STORAGE_KEY = 'products-expiry-tracker';
+const BASE_STORAGE_KEY = 'grocery-manager';
 const STORAGE_VERSION = '1.0';
 
-const saveToLocalStorage = (data) => {
+const getUserStorageKey = (userId) => {
+  return `${BASE_STORAGE_KEY}-${userId || 'guest'}`;
+};
+
+const saveToLocalStorage = (data, userId) => {
   try {
     const storageData = {
       version: STORAGE_VERSION,
       timestamp: new Date().toISOString(),
       data: data
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
+    const userStorageKey = getUserStorageKey(userId);
+    localStorage.setItem(userStorageKey, JSON.stringify(storageData));
     return true;
   } catch (error) {
     console.error('Failed to save to localStorage:', error);
@@ -28,9 +33,10 @@ const saveToLocalStorage = (data) => {
   }
 };
 
-const loadFromLocalStorage = () => {
+const loadFromLocalStorage = (userId) => {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const userStorageKey = getUserStorageKey(userId);
+    const stored = localStorage.getItem(userStorageKey);
     if (!stored) return null;
     
     const parsedData = JSON.parse(stored);
@@ -45,6 +51,17 @@ const loadFromLocalStorage = () => {
   } catch (error) {
     console.error('Failed to load from localStorage:', error);
     return null;
+  }
+};
+
+const clearUserData = (userId) => {
+  try {
+    const userStorageKey = getUserStorageKey(userId);
+    localStorage.removeItem(userStorageKey);
+    return true;
+  } catch (error) {
+    console.error('Failed to clear user data:', error);
+    return false;
   }
 };
 
@@ -72,23 +89,46 @@ function GroceryProApp() {
   const [editingGroceryValue, setEditingGroceryValue] = useState('');
   // Removed theme functionality - app now uses only dark mode
 
-  // Load data from localStorage on component mount
+  // Load data from localStorage when user changes
   useEffect(() => {
-    const savedData = loadFromLocalStorage();
-    if (savedData && savedData.products) {
-      setProducts(savedData.products);
-      // Load other saved preferences if they exist
-      if (savedData.notify !== undefined) setNotify(savedData.notify);
-      if (savedData.activeView) setActiveView(savedData.activeView);
-      if (savedData.groceryList) setGroceryList(savedData.groceryList);
-      // Theme functionality removed
+    if (user) {
+      // Clear old global data when user logs in
+      localStorage.removeItem('products-expiry-tracker');
+      
+      const savedData = loadFromLocalStorage(user.id);
+      if (savedData && savedData.products) {
+        setProducts(savedData.products);
+        // Load other saved preferences if they exist
+        if (savedData.notify !== undefined) setNotify(savedData.notify);
+        if (savedData.activeView) setActiveView(savedData.activeView);
+        if (savedData.groceryList) setGroceryList(savedData.groceryList);
+        // Theme functionality removed
+      } else {
+        // New user - reset to defaults
+        setProducts([]);
+        setNotify(true);
+        setActiveView('grocery');
+        setGroceryList([]);
+      }
+    } else {
+      // User logged out - clear all data
+      setProducts([]);
+      setNotify(true);
+      setActiveView('grocery');
+      setGroceryList([]);
+      setProductName('');
+      setExpiryDate('');
+      setEmailMsg('');
     }
-  }, []);
+  }, [user]);
 
   // Save data to localStorage whenever products or key preferences change
   useEffect(() => {
+    // Only save if user is authenticated
+    if (!user) return;
+    
     // Don't save on initial load
-    if (products.length === 0 && notify === true && activeView === 'dashboard') {
+    if (products.length === 0 && notify === true && activeView === 'grocery' && groceryList.length === 0) {
       return;
     }
     
@@ -100,7 +140,7 @@ function GroceryProApp() {
       groceryList
     };
     
-    const success = saveToLocalStorage(dataToSave);
+    const success = saveToLocalStorage(dataToSave, user.id);
     setSaveStatus(success ? 'saved' : 'error');
     
     // Reset save status after a short delay
@@ -401,10 +441,11 @@ function GroceryProApp() {
   const clearLocalStorage = () => {
     if (window.confirm('Are you sure you want to clear all saved data? This action cannot be undone.')) {
       try {
-        localStorage.removeItem(STORAGE_KEY);
+        clearUserData(user.id);
         setProducts([]);
         setNotify(true);
-        setActiveView('dashboard');
+        setActiveView('grocery');
+        setGroceryList([]);
         setEmailMsg('All data cleared successfully');
         setTimeout(() => setEmailMsg(''), 3000);
       } catch (error) {

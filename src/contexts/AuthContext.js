@@ -10,52 +10,37 @@ export const useAuth = () => {
   return context;
 };
 
-// Mock email service - in production, this would be a real API
-const mockEmailService = {
-  generateCode: () => Math.floor(100000 + Math.random() * 900000).toString(),
-  
-  sendCode: async (email, code) => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Log to console for demo purposes
-    console.log(`🔐 Login Code for ${email}: ${code}`);
-    
-    // In a real app, this would send an actual email
-    // For demo, we'll show a browser notification if available
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('Login Code Sent', {
-        body: `Your login code is: ${code}`,
-        icon: '/favicon.ico'
-      });
-    }
-    
-    return { success: true };
-  },
-  
-  validateEmail: (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
+const AUTH_STORAGE_KEY = 'grocery-manager-auth';
+const USERS_STORAGE_KEY = 'grocery-manager-users';
+
+// Mock validation functions
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
 };
 
-const AUTH_STORAGE_KEY = 'lettucetrack-auth';
-const CODES_STORAGE_KEY = 'lettucetrack-codes';
+const validatePassword = (password) => {
+  return password && password.length >= 6;
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingEmail, setPendingEmail] = useState('');
 
   // Load user from localStorage on app start
   useEffect(() => {
     try {
+      // Clear old authentication data from previous system
+      localStorage.removeItem('lettucetrack-auth');
+      localStorage.removeItem('lettucetrack-codes');
+      localStorage.removeItem('user'); // Old simple user storage
+      
       const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
       if (savedAuth) {
         const authData = JSON.parse(savedAuth);
-        // Check if session is still valid (24 hours)
+        // Check if session is still valid (7 days)
         const sessionExpiry = new Date(authData.timestamp);
-        sessionExpiry.setHours(sessionExpiry.getHours() + 24);
+        sessionExpiry.setDate(sessionExpiry.getDate() + 7);
         
         if (new Date() < sessionExpiry) {
           setUser(authData.user);
@@ -84,157 +69,115 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Generate and store verification codes
-  const getStoredCodes = () => {
+  // Get stored users
+  const getStoredUsers = () => {
     try {
-      const codes = localStorage.getItem(CODES_STORAGE_KEY);
-      return codes ? JSON.parse(codes) : {};
+      const users = localStorage.getItem(USERS_STORAGE_KEY);
+      return users ? JSON.parse(users) : {};
     } catch {
       return {};
     }
   };
 
-  const storeCode = (email, code) => {
+  // Save users to localStorage
+  const saveUsers = (users) => {
     try {
-      const codes = getStoredCodes();
-      codes[email] = {
-        code,
-        timestamp: new Date().toISOString(),
-        attempts: 0
-      };
-      localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(codes));
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     } catch (error) {
-      console.error('Error storing code:', error);
+      console.error('Error saving users:', error);
     }
   };
 
-  const isCodeValid = (email, code) => {
-    const codes = getStoredCodes();
-    const storedCodeData = codes[email];
-    
-    if (!storedCodeData) return false;
-    
-    // Check if code is expired (10 minutes)
-    const codeTime = new Date(storedCodeData.timestamp);
-    const now = new Date();
-    const timeDiff = (now - codeTime) / (1000 * 60); // minutes
-    
-    if (timeDiff > 10) {
-      // Code expired, remove it
-      delete codes[email];
-      localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(codes));
-      return false;
+  const register = async (name, email, password) => {
+    // Validate inputs
+    if (!name || name.trim().length < 2) {
+      throw new Error('Please enter a valid name (at least 2 characters)');
     }
-    
-    // Check if too many attempts (max 3)
-    if (storedCodeData.attempts >= 3) {
-      return false;
-    }
-    
-    return storedCodeData.code === code;
-  };
 
-  const incrementCodeAttempts = (email) => {
-    try {
-      const codes = getStoredCodes();
-      if (codes[email]) {
-        codes[email].attempts = (codes[email].attempts || 0) + 1;
-        localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(codes));
-      }
-    } catch (error) {
-      console.error('Error incrementing attempts:', error);
-    }
-  };
-
-  const sendLoginCode = async (email) => {
-    if (!mockEmailService.validateEmail(email)) {
+    if (!validateEmail(email)) {
       throw new Error('Please enter a valid email address');
     }
 
-    // Check if there's a recent code for this email (rate limiting)
-    const codes = getStoredCodes();
-    const existingCode = codes[email];
-    
-    if (existingCode) {
-      const codeTime = new Date(existingCode.timestamp);
-      const now = new Date();
-      const timeDiff = (now - codeTime) / (1000 * 60); // minutes
-      
-      if (timeDiff < 1) {
-        throw new Error('Please wait 1 minute before requesting a new code');
-      }
+    if (!validatePassword(password)) {
+      throw new Error('Password must be at least 6 characters long');
     }
 
-    const code = mockEmailService.generateCode();
+    // Check if user already exists
+    const users = getStoredUsers();
+    const emailKey = email.toLowerCase();
     
-    try {
-      await mockEmailService.sendCode(email, code);
-      storeCode(email, code);
-      setPendingEmail(email);
-      return { success: true };
-    } catch (error) {
-      throw new Error('Failed to send login code. Please try again.');
+    if (users[emailKey]) {
+      throw new Error('An account with this email already exists');
     }
+
+    // Create new user
+    const userData = {
+      id: `user_${Date.now()}`,
+      name: name.trim(),
+      email: email.toLowerCase(),
+      registeredAt: new Date().toISOString()
+    };
+
+    // Store user credentials (in real app, password would be hashed)
+    users[emailKey] = {
+      ...userData,
+      password: password // In production, this should be hashed
+    };
+
+    saveUsers(users);
+
+    // Log the user in immediately
+    setUser(userData);
+    saveAuthData(userData);
+
+    return { success: true, user: userData };
   };
 
-  const verifyLoginCode = async (email, code) => {
-    if (!email || !code) {
-      throw new Error('Email and code are required');
+  const login = async (email, password) => {
+    // Validate inputs
+    if (!validateEmail(email)) {
+      throw new Error('Please enter a valid email address');
     }
 
-    if (!isCodeValid(email, code)) {
-      incrementCodeAttempts(email);
-      const codes = getStoredCodes();
-      const attempts = codes[email]?.attempts || 0;
-      
-      if (attempts >= 3) {
-        throw new Error('Too many failed attempts. Please request a new code.');
-      } else {
-        throw new Error(`Invalid code. ${3 - attempts} attempts remaining.`);
-      }
+    if (!password) {
+      throw new Error('Please enter your password');
     }
 
-    // Code is valid, log the user in
+    // Check credentials
+    const users = getStoredUsers();
+    const emailKey = email.toLowerCase();
+    const storedUser = users[emailKey];
+
+    if (!storedUser || storedUser.password !== password) {
+      throw new Error('Invalid email or password');
+    }
+
+    // Create user session data (excluding password)
     const userData = {
-      email,
-      loginTime: new Date().toISOString(),
-      id: `user_${Date.now()}`
+      id: storedUser.id,
+      name: storedUser.name,
+      email: storedUser.email,
+      registeredAt: storedUser.registeredAt,
+      loginTime: new Date().toISOString()
     };
 
     setUser(userData);
     saveAuthData(userData);
-    setPendingEmail('');
-    
-    // Clear the used code
-    const codes = getStoredCodes();
-    delete codes[email];
-    localStorage.setItem(CODES_STORAGE_KEY, JSON.stringify(codes));
 
     return { success: true, user: userData };
   };
 
   const logout = () => {
     setUser(null);
-    setPendingEmail('');
     localStorage.removeItem(AUTH_STORAGE_KEY);
-    // Don't clear codes on logout, they might still be valid
-  };
-
-  const resendCode = async () => {
-    if (pendingEmail) {
-      return sendLoginCode(pendingEmail);
-    }
-    throw new Error('No email address to resend code to');
   };
 
   const value = {
     user,
     isLoading,
-    pendingEmail,
-    sendLoginCode,
-    verifyLoginCode,
+    register,
+    login,
     logout,
-    resendCode,
     isAuthenticated: !!user
   };
 
