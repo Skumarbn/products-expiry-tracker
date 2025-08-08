@@ -1,31 +1,28 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faPlus, faBoxOpen, faUserCircle, faBell, faDashboard, faChartBar, faCog, faSearch, faCalendarAlt, faExclamationTriangle, faCheckCircle, faTimesCircle, faTrash, faDownload, faUpload, faSquare, faCheckSquare, faSync, faShoppingCart, faExternalLinkAlt, faShoppingBasket, faListUl, faCheck, faLightbulb, faClipboardList, faSignOutAlt } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faPlus, faBoxOpen, faBell, faDashboard, faChartBar, faCog, faSearch, faCalendarAlt, faExclamationTriangle, faCheckCircle, faTimesCircle, faTrash, faDownload, faUpload, faSquare, faCheckSquare, faSync, faShoppingCart, faExternalLinkAlt, faShoppingBasket, faListUl, faCheck, faLightbulb, faClipboardList } from '@fortawesome/free-solid-svg-icons';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { AuthProvider } from './contexts/AuthContext';
-import { useAuth } from './contexts/AuthContext';
-import AuthGuard from './components/AuthGuard';
 import './App.css';
 
 // Local Storage constants and helpers
 const BASE_STORAGE_KEY = 'grocery-manager';
 const STORAGE_VERSION = '1.0';
 
-const getUserStorageKey = (userId) => {
-  return `${BASE_STORAGE_KEY}-${userId || 'guest'}`;
+const getStorageKey = () => {
+  return BASE_STORAGE_KEY;
 };
 
-const saveToLocalStorage = (data, userId) => {
+const saveToLocalStorage = (data) => {
   try {
     const storageData = {
       version: STORAGE_VERSION,
       timestamp: new Date().toISOString(),
       data: data
     };
-    const userStorageKey = getUserStorageKey(userId);
-    localStorage.setItem(userStorageKey, JSON.stringify(storageData));
+    const storageKey = getStorageKey();
+    localStorage.setItem(storageKey, JSON.stringify(storageData));
     return true;
   } catch (error) {
     console.error('Failed to save to localStorage:', error);
@@ -33,10 +30,10 @@ const saveToLocalStorage = (data, userId) => {
   }
 };
 
-const loadFromLocalStorage = (userId) => {
+const loadFromLocalStorage = () => {
   try {
-    const userStorageKey = getUserStorageKey(userId);
-    const stored = localStorage.getItem(userStorageKey);
+    const storageKey = getStorageKey();
+    const stored = localStorage.getItem(storageKey);
     if (!stored) return null;
     
     const parsedData = JSON.parse(stored);
@@ -54,19 +51,18 @@ const loadFromLocalStorage = (userId) => {
   }
 };
 
-const clearUserData = (userId) => {
+const clearStorageData = () => {
   try {
-    const userStorageKey = getUserStorageKey(userId);
-    localStorage.removeItem(userStorageKey);
+    const storageKey = getStorageKey();
+    localStorage.removeItem(storageKey);
     return true;
   } catch (error) {
-    console.error('Failed to clear user data:', error);
+    console.error('Failed to clear storage data:', error);
     return false;
   }
 };
 
 function GroceryProApp() {
-  const { user, logout } = useAuth();
   const [products, setProducts] = useState([]);
   const [productName, setProductName] = useState('');
   const [expiryDate, setExpiryDate] = useState(null);
@@ -89,44 +85,25 @@ function GroceryProApp() {
   const [editingGroceryValue, setEditingGroceryValue] = useState('');
   // Removed theme functionality - app now uses only dark mode
 
-  // Load data from localStorage when user changes
+  // Load data from localStorage on app start
   useEffect(() => {
-    if (user) {
-      // Clear old global data when user logs in
-      localStorage.removeItem('products-expiry-tracker');
-      
-      const savedData = loadFromLocalStorage(user.id);
-      if (savedData && savedData.products) {
-        setProducts(savedData.products);
-        // Load other saved preferences if they exist
-        if (savedData.notify !== undefined) setNotify(savedData.notify);
-        if (savedData.activeView) setActiveView(savedData.activeView);
-        if (savedData.groceryList) setGroceryList(savedData.groceryList);
-        // Theme functionality removed
-      } else {
-        // New user - reset to defaults
-        setProducts([]);
-        setNotify(true);
-        setActiveView('grocery');
-        setGroceryList([]);
-      }
-    } else {
-      // User logged out - clear all data
-      setProducts([]);
-      setNotify(true);
-      setActiveView('grocery');
-      setGroceryList([]);
-      setProductName('');
-      setExpiryDate('');
-      setEmailMsg('');
+    // Clear old authentication-related data
+    localStorage.removeItem('products-expiry-tracker');
+    localStorage.removeItem('grocery-manager-auth');
+    localStorage.removeItem('grocery-manager-users');
+    
+    const savedData = loadFromLocalStorage();
+    if (savedData && savedData.products) {
+      setProducts(savedData.products);
+      // Load other saved preferences if they exist
+      if (savedData.notify !== undefined) setNotify(savedData.notify);
+      if (savedData.activeView) setActiveView(savedData.activeView);
+      if (savedData.groceryList) setGroceryList(savedData.groceryList);
     }
-  }, [user]);
+  }, []);
 
   // Save data to localStorage whenever products or key preferences change
   useEffect(() => {
-    // Only save if user is authenticated
-    if (!user) return;
-    
     // Don't save on initial load
     if (products.length === 0 && notify === true && activeView === 'grocery' && groceryList.length === 0) {
       return;
@@ -140,7 +117,7 @@ function GroceryProApp() {
       groceryList
     };
     
-    const success = saveToLocalStorage(dataToSave, user.id);
+    const success = saveToLocalStorage(dataToSave);
     setSaveStatus(success ? 'saved' : 'error');
     
     // Reset save status after a short delay
@@ -441,7 +418,7 @@ function GroceryProApp() {
   const clearLocalStorage = () => {
     if (window.confirm('Are you sure you want to clear all saved data? This action cannot be undone.')) {
       try {
-        clearUserData(user.id);
+        clearStorageData();
         setProducts([]);
         setNotify(true);
         setActiveView('grocery');
@@ -689,22 +666,6 @@ function GroceryProApp() {
           </div>
         </nav>
 
-        <div className="sidebar-footer">
-          <div className="user-profile">
-            <FontAwesomeIcon icon={faUserCircle} />
-            <div className="user-info">
-              <span className="user-name">{user?.email?.split('@')[0] || 'User'}</span>
-              <span className="user-role">Authenticated</span>
-            </div>
-            <button 
-              className="logout-button"
-              onClick={logout}
-              title="Logout"
-            >
-              <FontAwesomeIcon icon={faSignOutAlt} />
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Main Content */}
@@ -1821,13 +1782,7 @@ function GroceryProApp() {
 }
 
 function App() {
-  return (
-    <AuthProvider>
-      <AuthGuard>
-        <GroceryProApp />
-      </AuthGuard>
-    </AuthProvider>
-  );
+  return <GroceryProApp />;
 }
 
 export default App;
